@@ -1,6 +1,6 @@
 from decimal import Decimal as D
 
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ugettext_lazy as _
 
 from oscar.core import prices
 
@@ -34,7 +34,7 @@ class Base(object):
         """
         Return the shipping charge for the given basket
         """
-        raise NotImplementedError
+        raise NotImplementedError()
 
     def discount(self, basket):
         """

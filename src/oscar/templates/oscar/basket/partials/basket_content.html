@@ -1,5 +1,5 @@
 {% load i18n %}
-{% load sorl_thumbnail %}
+{% load thumbnail %}
 {% load currency_filters %}
 {% load purchase_info_tags %}
 {% load widget_tweaks %}
@@ -35,7 +35,7 @@
     {% endblock %}
 
     {% block basket_form_main %}
-        <form method="post" class="basket_summary" id="basket_formset">
+        <form action="." method="post" class="basket_summary" id="basket_formset">
             {% csrf_token %}
             {{ formset.management_form }}
 

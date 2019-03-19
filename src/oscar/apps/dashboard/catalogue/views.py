@@ -5,13 +5,12 @@ from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect
 from django.template.loader import render_to_string
 from django.urls import reverse
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ugettext_lazy as _
 from django.views import generic
 from django_tables2 import SingleTableMixin, SingleTableView
 
 from oscar.core.loading import get_classes, get_model
 from oscar.views.generic import ObjectLookupView
-
 
 (ProductForm,
  ProductClassSelectForm,
@@ -19,8 +18,7 @@ from oscar.views.generic import ObjectLookupView
  ProductClassForm,
  CategoryForm,
  StockAlertSearchForm,
- AttributeOptionGroupForm,
- OptionForm) \
+ AttributeOptionGroupForm) \
     = get_classes('dashboard.catalogue.forms',
                   ('ProductForm',
                    'ProductClassSelectForm',
@@ -28,8 +26,7 @@ from oscar.views.generic import ObjectLookupView
                    'ProductClassForm',
                    'CategoryForm',
                    'StockAlertSearchForm',
-                   'AttributeOptionGroupForm',
-                   'OptionForm'))
+                   'AttributeOptionGroupForm'))
 (StockRecordFormSet,
  ProductCategoryFormSet,
  ProductImageFormSet,
@@ -43,10 +40,10 @@ from oscar.views.generic import ObjectLookupView
                    'ProductRecommendationFormSet',
                    'ProductAttributesFormSet',
                    'AttributeOptionFormSet'))
-ProductTable, CategoryTable, AttributeOptionGroupTable, OptionTable \
+ProductTable, CategoryTable, AttributeOptionGroupTable \
     = get_classes('dashboard.catalogue.tables',
                   ('ProductTable', 'CategoryTable',
-                   'AttributeOptionGroupTable', 'OptionTable'))
+                   'AttributeOptionGroupTable'))
 (PopUpWindowCreateMixin,
  PopUpWindowUpdateMixin,
  PopUpWindowDeleteMixin) \
@@ -63,7 +60,6 @@ StockRecord = get_model('partner', 'StockRecord')
 StockAlert = get_model('partner', 'StockAlert')
 Partner = get_model('partner', 'Partner')
 AttributeOptionGroup = get_model('catalogue', 'AttributeOptionGroup')
-Option = get_model('catalogue', 'Option')
 
 
 def filter_products(queryset, user):
@@ -93,7 +89,7 @@ class ProductListView(SingleTableView):
     context_table_name = 'products'
 
     def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+        ctx = super(ProductListView, self).get_context_data(**kwargs)
         ctx['form'] = self.form
         ctx['productclass_form'] = self.productclass_form_class()
         return ctx
@@ -107,7 +103,7 @@ class ProductListView(SingleTableView):
         if 'recently_edited' in self.request.GET:
             kwargs.update(dict(orderable=False))
 
-        table = super().get_table(**kwargs)
+        table = super(ProductListView, self).get_table(**kwargs)
         table.caption = self.get_description(self.form)
         return table
 
@@ -124,7 +120,7 @@ class ProductListView(SingleTableView):
         """
         Build the queryset for this list
         """
-        queryset = Product.objects.browsable().base_queryset()
+        queryset = Product.browsable.base_queryset()
         queryset = self.filter_queryset(queryset)
         queryset = self.apply_search(queryset)
         return queryset
@@ -147,8 +143,8 @@ class ProductListView(SingleTableView):
             # that contain the UPC
             matches_upc = Product.objects.filter(upc=data['upc'])
             qs_match = queryset.filter(
-                Q(id__in=matches_upc.values('id'))
-                | Q(id__in=matches_upc.values('parent_id')))
+                Q(id__in=matches_upc.values('id')) |
+                Q(id__in=matches_upc.values('parent_id')))
 
             if qs_match.exists():
                 queryset = qs_match
@@ -213,14 +209,14 @@ class ProductCreateUpdateView(generic.UpdateView):
     stockrecord_formset = StockRecordFormSet
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(ProductCreateUpdateView, self).__init__(*args, **kwargs)
         self.formsets = {'category_formset': self.category_formset,
                          'image_formset': self.image_formset,
                          'recommended_formset': self.recommendations_formset,
                          'stockrecord_formset': self.stockrecord_formset}
 
     def dispatch(self, request, *args, **kwargs):
-        resp = super().dispatch(
+        resp = super(ProductCreateUpdateView, self).dispatch(
             request, *args, **kwargs)
         return self.check_objects_or_redirect() or resp
 
@@ -270,13 +266,13 @@ class ProductCreateUpdateView(generic.UpdateView):
 
             return None  # success
         else:
-            product = super().get_object(queryset)
+            product = super(ProductCreateUpdateView, self).get_object(queryset)
             self.product_class = product.get_product_class()
             self.parent = product.parent
             return product
 
     def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+        ctx = super(ProductCreateUpdateView, self).get_context_data(**kwargs)
         ctx['product_class'] = self.product_class
         ctx['parent'] = self.parent
         ctx['title'] = self.get_page_title()
@@ -304,7 +300,7 @@ class ProductCreateUpdateView(generic.UpdateView):
                     'parent_product': self.parent.title}
 
     def get_form_kwargs(self):
-        kwargs = super().get_form_kwargs()
+        kwargs = super(ProductCreateUpdateView, self).get_form_kwargs()
         kwargs['product_class'] = self.product_class
         kwargs['parent'] = self.parent
         return kwargs
@@ -453,7 +449,7 @@ class ProductDeleteView(generic.DeleteView):
         return filter_products(Product.objects.all(), self.request.user)
 
     def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+        ctx = super(ProductDeleteView, self).get_context_data(**kwargs)
         if self.object.is_child:
             ctx['title'] = _("Delete product variant?")
         else:
@@ -519,7 +515,7 @@ class StockAlertListView(generic.ListView):
     paginate_by = settings.OSCAR_STOCK_ALERTS_PER_PAGE
 
     def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+        ctx = super(StockAlertListView, self).get_context_data(**kwargs)
         ctx['form'] = self.form
         ctx['description'] = self.description
         return ctx
@@ -546,7 +542,7 @@ class CategoryListView(SingleTableView):
         return Category.get_root_nodes()
 
     def get_context_data(self, *args, **kwargs):
-        ctx = super().get_context_data(*args, **kwargs)
+        ctx = super(CategoryListView, self).get_context_data(*args, **kwargs)
         ctx['child_categories'] = Category.get_root_nodes()
         return ctx
 
@@ -562,7 +558,8 @@ class CategoryDetailListView(SingleTableMixin, generic.DetailView):
         return self.object.get_children()
 
     def get_context_data(self, *args, **kwargs):
-        ctx = super().get_context_data(*args, **kwargs)
+        ctx = super(CategoryDetailListView, self).get_context_data(*args,
+                                                                   **kwargs)
         ctx['child_categories'] = self.object.get_children()
         ctx['ancestors'] = self.object.get_ancestors_and_self()
         return ctx
@@ -585,17 +582,17 @@ class CategoryCreateView(CategoryListMixin, generic.CreateView):
     form_class = CategoryForm
 
     def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+        ctx = super(CategoryCreateView, self).get_context_data(**kwargs)
         ctx['title'] = _("Add a new category")
         return ctx
 
     def get_success_url(self):
         messages.info(self.request, _("Category created successfully"))
-        return super().get_success_url()
+        return super(CategoryCreateView, self).get_success_url()
 
     def get_initial(self):
         # set child category if set in the URL kwargs
-        initial = super().get_initial()
+        initial = super(CategoryCreateView, self).get_initial()
         if 'parent' in self.kwargs:
             initial['_ref_node_id'] = self.kwargs['parent']
         return initial
@@ -607,13 +604,13 @@ class CategoryUpdateView(CategoryListMixin, generic.UpdateView):
     form_class = CategoryForm
 
     def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+        ctx = super(CategoryUpdateView, self).get_context_data(**kwargs)
         ctx['title'] = _("Update category '%s'") % self.object.name
         return ctx
 
     def get_success_url(self):
         messages.info(self.request, _("Category updated successfully"))
-        return super().get_success_url()
+        return super(CategoryUpdateView, self).get_success_url()
 
 
 class CategoryDeleteView(CategoryListMixin, generic.DeleteView):
@@ -621,13 +618,13 @@ class CategoryDeleteView(CategoryListMixin, generic.DeleteView):
     model = Category
 
     def get_context_data(self, *args, **kwargs):
-        ctx = super().get_context_data(*args, **kwargs)
+        ctx = super(CategoryDeleteView, self).get_context_data(*args, **kwargs)
         ctx['parent'] = self.object.get_parent()
         return ctx
 
     def get_success_url(self):
         messages.info(self.request, _("Category deleted successfully"))
-        return super().get_success_url()
+        return super(CategoryDeleteView, self).get_success_url()
 
 
 class ProductLookupView(ObjectLookupView):
@@ -692,7 +689,7 @@ class ProductClassCreateUpdateView(generic.UpdateView):
     form_valid = form_invalid = process_all_forms
 
     def get_context_data(self, *args, **kwargs):
-        ctx = super().get_context_data(
+        ctx = super(ProductClassCreateUpdateView, self).get_context_data(
             *args, **kwargs)
 
         if "attributes_formset" not in ctx:
@@ -741,7 +738,8 @@ class ProductClassListView(generic.ListView):
     model = ProductClass
 
     def get_context_data(self, *args, **kwargs):
-        ctx = super().get_context_data(*args, **kwargs)
+        ctx = super(ProductClassListView, self).get_context_data(*args,
+                                                                 **kwargs)
         ctx['title'] = _("Product Types")
         return ctx
 
@@ -752,7 +750,8 @@ class ProductClassDeleteView(generic.DeleteView):
     form_class = ProductClassForm
 
     def get_context_data(self, *args, **kwargs):
-        ctx = super().get_context_data(*args, **kwargs)
+        ctx = super(ProductClassDeleteView, self).get_context_data(*args,
+                                                                   **kwargs)
         ctx['title'] = _("Delete product type '%s'") % self.object.name
         product_count = self.object.products.count()
 
@@ -799,10 +798,8 @@ class AttributeOptionGroupCreateUpdateView(generic.UpdateView):
     def forms_valid(self, form, attribute_option_formset):
         form.save()
         attribute_option_formset.save()
-        if self.is_popup:
-            return self.popup_response(form.instance)
-        else:
-            return HttpResponseRedirect(self.get_success_url())
+
+        return HttpResponseRedirect(self.get_success_url())
 
     def forms_invalid(self, form, attribute_option_formset):
         messages.error(self.request,
@@ -822,7 +819,7 @@ class AttributeOptionGroupCreateUpdateView(generic.UpdateView):
     form_valid = form_invalid = process_all_forms
 
     def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+        ctx = super(AttributeOptionGroupCreateUpdateView, self).get_context_data(**kwargs)
         ctx.setdefault("attribute_option_formset", self.attribute_option_formset(instance=self.object))
         ctx["title"] = self.get_title()
         return ctx
@@ -845,7 +842,8 @@ class AttributeOptionGroupCreateView(PopUpWindowCreateMixin, AttributeOptionGrou
         return _("Add a new Attribute Option Group")
 
     def get_success_url(self):
-        self.add_success_message(_("Attribute Option Group created successfully"))
+        if not self.is_popup:
+            messages.info(self.request, _("Attribute Option Group created successfully"))
         url = reverse("dashboard:catalogue-attribute-option-group-list")
         return self.get_url_with_querystring(url)
 
@@ -862,7 +860,8 @@ class AttributeOptionGroupUpdateView(PopUpWindowUpdateMixin, AttributeOptionGrou
         return _("Update Attribute Option Group '%s'") % self.object.name
 
     def get_success_url(self):
-        self.add_success_message(_("Attribute Option Group updated successfully"))
+        if not self.is_popup:
+            messages.info(self.request, _("Attribute Option Group updated successfully"))
         url = reverse("dashboard:catalogue-attribute-option-group-list")
         return self.get_url_with_querystring(url)
 
@@ -875,7 +874,7 @@ class AttributeOptionGroupListView(SingleTableView):
     context_table_name = 'attribute_option_groups'
 
     def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+        ctx = super(AttributeOptionGroupListView, self).get_context_data(**kwargs)
         ctx['querystring'] = self.request.GET.urlencode()
         return ctx
 
@@ -887,7 +886,7 @@ class AttributeOptionGroupDeleteView(PopUpWindowDeleteMixin, generic.DeleteView)
     form_class = AttributeOptionGroupForm
 
     def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+        ctx = super(AttributeOptionGroupDeleteView, self).get_context_data(**kwargs)
 
         ctx['title'] = _("Delete Attribute Option Group '%s'") % self.object.name
 
@@ -915,104 +914,7 @@ class AttributeOptionGroupDeleteView(PopUpWindowDeleteMixin, generic.DeleteView)
         return "?".join(url_parts)
 
     def get_success_url(self):
-        self.add_success_message(_("Attribute Option Group deleted successfully"))
+        if not self.is_popup:
+            messages.info(self.request, _("Attribute Option Group deleted successfully"))
         url = reverse("dashboard:catalogue-attribute-option-group-list")
         return self.get_url_with_querystring(url)
-
-
-class OptionListView(SingleTableView):
-
-    template_name = 'dashboard/catalogue/option_list.html'
-    model = Option
-    table_class = OptionTable
-    context_table_name = 'options'
-
-
-class OptionCreateUpdateView(generic.UpdateView):
-
-    template_name = 'dashboard/catalogue/option_form.html'
-    model = Option
-    form_class = OptionForm
-
-    def form_valid(self, form):
-        self.object = form.save()
-        if self.is_popup:
-            return self.popup_response(form.instance)
-        else:
-            return HttpResponseRedirect(self.get_success_url())
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        ctx['title'] = self.get_title()
-        return ctx
-
-    def form_invalid(self, form):
-        messages.error(
-            self.request,
-            _("Your submitted data was not valid - please correct the errors below")
-        )
-        return super().form_invalid(form)
-
-
-class OptionCreateView(PopUpWindowCreateMixin, OptionCreateUpdateView):
-
-    creating = True
-
-    def get_object(self):
-        return None
-
-    def get_title(self):
-        return _("Add a new Option")
-
-    def get_success_url(self):
-        self.add_success_message(_("Option created successfully"))
-        return reverse("dashboard:catalogue-option-list")
-
-
-class OptionUpdateView(PopUpWindowUpdateMixin, OptionCreateUpdateView):
-
-    creating = False
-
-    def get_object(self):
-        attribute_option_group = get_object_or_404(Option, pk=self.kwargs['pk'])
-        return attribute_option_group
-
-    def get_title(self):
-        return _("Update Option '%s'") % self.object.name
-
-    def get_success_url(self):
-        self.add_success_message(_("Option updated successfully"))
-        return reverse("dashboard:catalogue-option-list")
-
-
-class OptionDeleteView(PopUpWindowDeleteMixin, generic.DeleteView):
-
-    template_name = 'dashboard/catalogue/option_delete.html'
-    model = Option
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-
-        ctx['title'] = _("Delete Option '%s'") % self.object.name
-
-        products = self.object.product_set.count()
-        product_classes = self.object.productclass_set.count()
-        if any([products, product_classes]):
-            ctx['disallow'] = True
-            ctx['title'] = _("Unable to delete '%s'") % self.object.name
-            if products:
-                messages.error(
-                    self.request,
-                    _("%i products are still assigned to this option") % products
-                )
-            if product_classes:
-                messages.error(
-                    self.request,
-                    _("%i product classes are still assigned to this option") % product_classes
-                )
-
-        return ctx
-
-    def get_success_url(self):
-        self.add_success_message(_("Option deleted successfully"))
-        return reverse("dashboard:catalogue-option-list")

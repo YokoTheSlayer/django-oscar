@@ -1,11 +1,13 @@
 from decimal import Decimal
 
 from django.db import models
-from django.utils.translation import gettext_lazy as _
+from django.utils.encoding import python_2_unicode_compatible
+from django.utils.translation import ugettext_lazy as _
 
 from oscar.core.compat import AUTH_USER_MODEL
 
 
+@python_2_unicode_compatible
 class AbstractProductRecord(models.Model):
     """
     A record of a how popular a product is.
@@ -72,6 +74,7 @@ class AbstractUserRecord(models.Model):
         verbose_name_plural = _('User records')
 
 
+@python_2_unicode_compatible
 class AbstractUserProductView(models.Model):
 
     user = models.ForeignKey(
@@ -94,6 +97,7 @@ class AbstractUserProductView(models.Model):
             'user': self.user, 'product': self.product}
 
 
+@python_2_unicode_compatible
 class AbstractUserSearch(models.Model):
 
     user = models.ForeignKey(

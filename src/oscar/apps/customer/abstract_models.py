@@ -5,9 +5,10 @@ from django.db import models
 from django.template import TemplateDoesNotExist, engines
 from django.template.loader import get_template
 from django.urls import reverse
-from django.utils import timezone
+from django.utils import six, timezone
 from django.utils.crypto import get_random_string
-from django.utils.translation import gettext_lazy as _
+from django.utils.encoding import python_2_unicode_compatible
+from django.utils.translation import ugettext_lazy as _
 
 from oscar.core.compat import AUTH_USER_MODEL
 from oscar.core.loading import get_class
@@ -97,7 +98,7 @@ class AbstractUser(auth_models.AbstractBaseUser,
         alerts.update(user=self, key='', email='')
 
     def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
+        super(AbstractUser, self).save(*args, **kwargs)
         # Migrate any "anonymous" product alerts to the registered user
         # Ideally, this would be done via a post-save signal. But we can't
         # use get_user_model to wire up signals to custom user models
@@ -105,6 +106,7 @@ class AbstractUser(auth_models.AbstractBaseUser,
         self._migrate_alerts_to_user()
 
 
+@python_2_unicode_compatible
 class AbstractEmail(models.Model):
     """
     This is a record of all emails sent to a customer.
@@ -130,13 +132,14 @@ class AbstractEmail(models.Model):
 
     def __str__(self):
         if self.user:
-            return _("Email to %(user)s with subject '%(subject)s'") % {
+            return _(u"Email to %(user)s with subject '%(subject)s'") % {
                 'user': self.user.get_username(), 'subject': self.subject}
         else:
-            return _("Anonymous email to %(email)s with subject '%(subject)s'") % {
+            return _(u"Anonymous email to %(email)s with subject '%(subject)s'") % {
                 'email': self.email, 'subject': self.subject}
 
 
+@python_2_unicode_compatible
 class AbstractCommunicationEventType(models.Model):
     """
     A 'type' of communication.  Like an order confirmation email.
@@ -147,7 +150,7 @@ class AbstractCommunicationEventType(models.Model):
     # it's a useful convention that's been enforced in previous Oscar versions
     code = AutoSlugField(
         _('Code'), max_length=128, unique=True, populate_from='name',
-        separator="_", uppercase=True, editable=True,
+        separator=six.u("_"), uppercase=True, editable=True,
         validators=[
             RegexValidator(
                 regex=r'^[a-zA-Z_][0-9a-zA-Z_]*$',
@@ -261,6 +264,7 @@ class AbstractCommunicationEventType(models.Model):
         return self.category == self.USER_RELATED
 
 
+@python_2_unicode_compatible
 class AbstractNotification(models.Model):
     recipient = models.ForeignKey(
         AUTH_USER_MODEL,
@@ -289,7 +293,7 @@ class AbstractNotification(models.Model):
     location = models.CharField(max_length=32, choices=choices,
                                 default=INBOX)
 
-    date_sent = models.DateTimeField(auto_now_add=True, db_index=True)
+    date_sent = models.DateTimeField(auto_now_add=True)
     date_read = models.DateTimeField(blank=True, null=True)
 
     class Meta:
@@ -424,7 +428,7 @@ class AbstractProductAlert(models.Model):
         if self.status == self.CLOSED and self.date_closed is None:
             self.date_closed = timezone.now()
 
-        return super().save(*args, **kwargs)
+        return super(AbstractProductAlert, self).save(*args, **kwargs)
 
     def get_random_key(self):
         return get_random_string(length=40, allowed_chars='abcdefghijklmnopqrstuvwxyz0123456789')

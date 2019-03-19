@@ -11,13 +11,13 @@ from django.db import models
 from django.db.models.query import Q
 from django.template.defaultfilters import date as date_filter
 from django.urls import reverse
+from django.utils.encoding import python_2_unicode_compatible
 from django.utils.functional import cached_property
 from django.utils.timezone import get_current_timezone, now
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ugettext_lazy as _
 
 from oscar.core.compat import AUTH_USER_MODEL
-from oscar.core.decorators import deprecated
-from oscar.core.loading import get_class, get_classes, get_model, cached_import_string
+from oscar.core.loading import get_class, get_classes, get_model
 from oscar.models import fields
 from oscar.templatetags.currency_filters import currency
 
@@ -27,6 +27,7 @@ ZERO_DISCOUNT = get_class('offer.results', 'ZERO_DISCOUNT')
 load_proxy, unit_price = get_classes('offer.utils', ['load_proxy', 'unit_price'])
 
 
+@python_2_unicode_compatible
 class BaseOfferMixin(models.Model):
     class Meta:
         abstract = True
@@ -80,6 +81,7 @@ class BaseOfferMixin(models.Model):
         return self.name
 
 
+@python_2_unicode_compatible
 class AbstractConditionalOffer(models.Model):
     """
     A conditional offer (eg buy 1, get 10% off)
@@ -139,7 +141,7 @@ class AbstractConditionalOffer(models.Model):
 
     # Some complicated situations require offers to be applied in a set order.
     priority = models.IntegerField(
-        _("Priority"), default=0, db_index=True,
+        _("Priority"), default=0,
         help_text=_("The highest priority offers are applied first"))
 
     # AVAILABILITY
@@ -229,7 +231,7 @@ class AbstractConditionalOffer(models.Model):
             else:
                 self.status = self.OPEN
 
-        return super().save(*args, **kwargs)
+        return super(AbstractConditionalOffer, self).save(*args, **kwargs)
 
     def get_absolute_url(self):
         return reverse('offer:detail', kwargs={'slug': self.slug})
@@ -238,8 +240,8 @@ class AbstractConditionalOffer(models.Model):
         return self.name
 
     def clean(self):
-        if (self.start_datetime and self.end_datetime
-                and self.start_datetime > self.end_datetime):
+        if (self.start_datetime and self.end_datetime and
+                self.start_datetime > self.end_datetime):
             raise exceptions.ValidationError(
                 _('End date should be later than start date'))
 
@@ -321,8 +323,8 @@ class AbstractConditionalOffer(models.Model):
         # when there are not other caps.
         limits = [10000]
         if self.max_user_applications and user:
-            limits.append(max(0, self.max_user_applications
-                              - self.get_num_user_applications(user)))
+            limits.append(max(0, self.max_user_applications -
+                          self.get_num_user_applications(user)))
         if self.max_basket_applications:
             limits.append(self.max_basket_applications)
         if self.max_global_applications:
@@ -440,7 +442,12 @@ class AbstractConditionalOffer(models.Model):
         if not self.has_products:
             return Product.objects.none()
 
-        queryset = self.condition.range.all_products()
+        cond_range = self.condition.range
+        if cond_range.includes_all_products:
+            # Return ALL the products
+            queryset = Product.browsable
+        else:
+            queryset = cond_range.all_products()
         return queryset.filter(is_discountable=True).exclude(
             structure=Product.CHILD)
 
@@ -620,11 +627,8 @@ class AbstractBenefit(BaseOfferMixin, models.Model):
         """
         Apply rounding to discount amount
         """
-        rounding_function_path = getattr(settings, 'OSCAR_OFFER_ROUNDING_FUNCTION', None)
-        if rounding_function_path:
-            rounding_function = cached_import_string(rounding_function_path)
-            return rounding_function(amount)
-
+        if hasattr(settings, 'OSCAR_OFFER_ROUNDING_FUNCTION'):
+            return settings.OSCAR_OFFER_ROUNDING_FUNCTION(amount)
         return amount.quantize(D('.01'), ROUND_DOWN)
 
     def _effective_max_affected_items(self):
@@ -654,7 +658,8 @@ class AbstractBenefit(BaseOfferMixin, models.Model):
         for line in basket.all_lines():
             product = line.product
 
-            if (not range.contains_product(product) or not self.can_apply_benefit(line)):
+            if (not range.contains(product) or
+                    not self.can_apply_benefit(line)):
                 continue
 
             price = unit_price(offer, line)
@@ -767,6 +772,7 @@ class AbstractCondition(BaseOfferMixin, models.Model):
         return sorted(line_tuples, key=key)
 
 
+@python_2_unicode_compatible
 class AbstractRange(models.Model):
     """
     Represents a range of products that can be used within an offer.
@@ -809,7 +815,6 @@ class AbstractRange(models.Model):
 
     __included_product_ids = None
     __excluded_product_ids = None
-    __included_categories = None
     __class_ids = None
     __category_ids = None
 
@@ -850,8 +855,8 @@ class AbstractRange(models.Model):
             range=self, product=product,
             defaults={'display_order': initial_order})
 
-        if (display_order is not None
-                and relation.display_order != display_order):
+        if (display_order is not None and
+                relation.display_order != display_order):
             relation.display_order = display_order
             relation.save()
 
@@ -889,8 +894,7 @@ class AbstractRange(models.Model):
             return False
         if self.includes_all_products:
             return True
-        class_ids = self._class_ids()
-        if class_ids and product.get_product_class().id in class_ids:
+        if product.get_product_class().id in self._class_ids():
             return True
         included_product_ids = self._included_product_ids()
         # If the product's parent is in the range, the child is automatically included as well
@@ -898,20 +902,17 @@ class AbstractRange(models.Model):
             return True
         if product.id in included_product_ids:
             return True
-        test_categories = self._included_categories()
+        test_categories = self.included_categories.all()
         if test_categories:
-            for category in product.get_categories().only(
-                    *self._category_comparison_fields):
+            for category in product.get_categories().all():
                 for test_category in test_categories:
                     if category == test_category \
                             or category.is_descendant_of(test_category):
                         return True
         return False
 
-    # Deprecated alias
-    @deprecated
-    def contains(self, product):
-        return self.contains_product(product)
+    # Shorter alias
+    contains = contains_product
 
     def __get_pks_and_child_pks(self, queryset):
         """
@@ -926,23 +927,6 @@ class AbstractRange(models.Model):
         flat_iterable = itertools.chain.from_iterable(pk_tuples_iterable)
         # Ensure uniqueness and remove None; {4, 5, 10, 11}
         return set(flat_iterable) - {None}
-
-    @cached_property
-    def _category_comparison_fields(self):
-        # Overwritten Category models could contain a lot of data, e.g CMS
-        # content. Hence, this avoids fetching unneeded data in the costly
-        # range comparison queries. Note that using .only() with an empty list
-        # is a no-op essentially, so nothing breaks when the field is missing.
-        Category = get_model('catalogue', 'Category')
-        return getattr(Category, 'COMPARISON_FIELDS', ())
-
-    def _included_categories(self):
-        if not self.id:
-            return self.included_categories.none()
-        if self.__included_categories is None:
-            self.__included_categories = self.included_categories.only(
-                *self._category_comparison_fields)
-        return self.__included_categories
 
     def _included_product_ids(self):
         if not self.id:
@@ -967,20 +951,19 @@ class AbstractRange(models.Model):
 
     def _category_ids(self):
         if self.__category_ids is None:
-            ids = []
-            for category in self._included_categories():
+            category_ids_list = list(
+                self.included_categories.values_list('pk', flat=True))
+            for category in self.included_categories.all():
                 children_ids = category.get_descendants().values_list(
                     'pk', flat=True)
-                ids.append(category.pk)
-                ids.extend(list(children_ids))
+                category_ids_list.extend(list(children_ids))
 
-            self.__category_ids = ids
+            self.__category_ids = category_ids_list
 
         return self.__category_ids
 
     def invalidate_cached_ids(self):
         self.__category_ids = None
-        self.__included_categories = None
         self.__included_product_ids = None
         self.__excluded_product_ids = None
 
@@ -1005,14 +988,13 @@ class AbstractRange(models.Model):
 
         Product = get_model("catalogue", "Product")
         if self.includes_all_products:
-            # Filter out child products and blacklisted products
-            return Product.objects.browsable().exclude(
-                id__in=self._excluded_product_ids())
+            # Filter out child products
+            return Product.browsable.all()
 
         return Product.objects.filter(
-            Q(id__in=self._included_product_ids())
-            | Q(product_class_id__in=self._class_ids())
-            | Q(productcategory__category_id__in=self._category_ids())
+            Q(id__in=self._included_product_ids()) |
+            Q(product_class_id__in=self._class_ids()) |
+            Q(productcategory__category_id__in=self._category_ids())
         ).exclude(id__in=self._excluded_product_ids()).distinct()
 
     @property
@@ -1027,7 +1009,7 @@ class AbstractRange(models.Model):
         """
         Test whether products for the range can be re-ordered.
         """
-        return len(self._class_ids()) == 0 and len(self._included_categories()) == 0
+        return len(self._class_ids()) == 0 and len(self._category_ids()) == 0
 
 
 class AbstractRangeProduct(models.Model):
@@ -1057,7 +1039,7 @@ class AbstractRangeProductFileUpload(models.Model):
         AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         verbose_name=_("Uploaded By"))
-    date_uploaded = models.DateTimeField(_("Date Uploaded"), auto_now_add=True, db_index=True)
+    date_uploaded = models.DateTimeField(_("Date Uploaded"), auto_now_add=True)
 
     PENDING, FAILED, PROCESSED = 'Pending', 'Failed', 'Processed'
     choices = (
@@ -1123,8 +1105,8 @@ class AbstractRangeProductFileUpload(models.Model):
 
         Product = get_model('catalogue', 'Product')
         products = Product._default_manager.filter(
-            models.Q(stockrecords__partner_sku__in=new_ids)
-            | models.Q(upc__in=new_ids))
+            models.Q(stockrecords__partner_sku__in=new_ids) |
+            models.Q(upc__in=new_ids))
         for product in products:
             self.range.add_product(product)
 

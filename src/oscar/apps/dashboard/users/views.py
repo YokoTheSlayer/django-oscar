@@ -3,13 +3,14 @@ from django.contrib import messages
 from django.db.models import Q
 from django.shortcuts import redirect
 from django.urls import reverse
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ugettext_lazy as _
 from django.views.generic import (
     DeleteView, DetailView, FormView, ListView, UpdateView)
 from django.views.generic.detail import SingleObjectMixin
 from django.views.generic.edit import FormMixin
 from django_tables2 import SingleTableView
 
+from oscar.apps.customer.utils import normalise_email
 from oscar.core.compat import get_user_model
 from oscar.core.loading import get_class, get_classes, get_model
 from oscar.views.generic import BulkEditMixin
@@ -37,13 +38,13 @@ class IndexView(BulkEditMixin, FormMixin, SingleTableView):
     def dispatch(self, request, *args, **kwargs):
         form_class = self.get_form_class()
         self.form = self.get_form(form_class)
-        return super().dispatch(request, *args, **kwargs)
+        return super(IndexView, self).dispatch(request, *args, **kwargs)
 
     def get_form_kwargs(self):
         """
         Only bind search form if it was submitted.
         """
-        kwargs = super().get_form_kwargs()
+        kwargs = super(IndexView, self).get_form_kwargs()
 
         if 'search' in self.request.GET:
             kwargs.update({
@@ -73,7 +74,7 @@ class IndexView(BulkEditMixin, FormMixin, SingleTableView):
         Function is split out to allow customisation with little boilerplate.
         """
         if data['email']:
-            email = data['email']
+            email = normalise_email(data['email'])
             queryset = queryset.filter(email__istartswith=email)
             self.desc_ctx['email_filter'] \
                 = _(" with email matching '%s'") % email
@@ -93,12 +94,12 @@ class IndexView(BulkEditMixin, FormMixin, SingleTableView):
         return queryset
 
     def get_table(self, **kwargs):
-        table = super().get_table(**kwargs)
+        table = super(IndexView, self).get_table(**kwargs)
         table.caption = self.desc_template % self.desc_ctx
         return table
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
+        context = super(IndexView, self).get_context_data(**kwargs)
         context['form'] = self.form
         return context
 
@@ -130,17 +131,17 @@ class PasswordResetView(SingleObjectMixin, FormView):
 
     def post(self, request, *args, **kwargs):
         self.object = self.get_object()
-        return super().post(request, *args, **kwargs)
+        return super(PasswordResetView, self).post(request, *args, **kwargs)
 
     def get_form_kwargs(self):
-        kwargs = super().get_form_kwargs()
+        kwargs = super(PasswordResetView, self).get_form_kwargs()
         kwargs['data'] = {'email': self.object.email}
         return kwargs
 
     def form_valid(self, form):
         # The PasswordResetForm's save method sends the reset email
         form.save(request=self.request)
-        return super().form_valid(form)
+        return super(PasswordResetView, self).form_valid(form)
 
     def get_success_url(self):
         messages.success(
@@ -185,16 +186,16 @@ class ProductAlertListView(ListView):
                 ).distinct()
             else:
                 queryset = queryset.filter(
-                    Q(user__first_name__istartswith=parts[0])
-                    | Q(user__last_name__istartswith=parts[-1])
+                    Q(user__first_name__istartswith=parts[0]) |
+                    Q(user__last_name__istartswith=parts[-1])
                 ).distinct()
             self.description \
                 += _(" with customer name matching '%s'") % data['name']
 
         if data['email']:
             queryset = queryset.filter(
-                Q(user__email__icontains=data['email'])
-                | Q(email__icontains=data['email'])
+                Q(user__email__icontains=data['email']) |
+                Q(email__icontains=data['email'])
             )
             self.description \
                 += _(" with customer email matching '%s'") % data['email']
@@ -202,7 +203,7 @@ class ProductAlertListView(ListView):
         return queryset
 
     def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
+        context = super(ProductAlertListView, self).get_context_data(**kwargs)
         context['form'] = self.form
         context['queryset_description'] = self.description
         return context

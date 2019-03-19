@@ -1,7 +1,7 @@
 from collections import OrderedDict
 
 from django.urls import reverse_lazy
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ugettext_lazy as _
 
 OSCAR_SHOP_NAME = 'Oscar'
 OSCAR_SHOP_TAGLINE = ''
@@ -87,9 +87,6 @@ OSCAR_SLUG_ALLOW_UNICODE = False
 # Cookies
 OSCAR_COOKIES_DELETE_ON_LOGOUT = ['oscar_recently_viewed_products', ]
 
-# Offers
-OSCAR_OFFERS_INCL_TAX = False
-
 # Hidden Oscar features, e.g. wishlists or reviews
 OSCAR_HIDDEN_FEATURES = []
 
@@ -123,10 +120,6 @@ OSCAR_DASHBOARD_NAVIGATION = [
             {
                 'label': _('Low stock alerts'),
                 'url_name': 'dashboard:stock-alert-list',
-            },
-            {
-                'label': _('Options'),
-                'url_name': 'dashboard:catalogue-option-list',
             },
         ]
     },
@@ -248,10 +241,10 @@ OSCAR_SEARCH_FACETS = {
              'queries': [
                  # This is a list of (name, query) tuples where the name will
                  # be displayed on the front-end.
-                 (_('0 to 20'), '[0 TO 20]'),
-                 (_('20 to 40'), '[20 TO 40]'),
-                 (_('40 to 60'), '[40 TO 60]'),
-                 (_('60+'), '[60 TO *]'),
+                 (_('0 to 20'), u'[0 TO 20]'),
+                 (_('20 to 40'), u'[20 TO 40]'),
+                 (_('40 to 60'), u'[40 TO 60]'),
+                 (_('60+'), u'[60 TO *]'),
              ]
          }),
     ]),

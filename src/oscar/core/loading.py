@@ -1,5 +1,6 @@
 import sys
 import traceback
+import warnings
 from importlib import import_module
 
 from django.apps import apps
@@ -11,6 +12,33 @@ from django.utils.module_loading import import_string
 
 from oscar.core.exceptions import (
     AppNotFoundError, ClassNotFoundError, ModuleNotFoundError)
+
+# To preserve backwards compatibility of loading classes which moved
+# from one Oscar module to another, we look into the dictionary below
+# for the moved items during loading.
+MOVED_ITEMS = {
+    'oscar.apps.basket.forms': (
+        'oscar.apps.basket.formsets', ('BaseBasketLineFormSet', 'BasketLineFormSet',
+                                       'BaseSavedLineFormSet', 'SavedLineFormSet')
+    ),
+    'oscar.apps.dashboard.catalogue.forms': (
+        'oscar.apps.dashboard.catalogue.formsets', ('BaseStockRecordFormSet',
+                                                    'StockRecordFormSet',
+                                                    'BaseProductCategoryFormSet',
+                                                    'ProductCategoryFormSet',
+                                                    'BaseProductImageFormSet',
+                                                    'ProductImageFormSet',
+                                                    'BaseProductRecommendationFormSet',
+                                                    'ProductRecommendationFormSet',
+                                                    'ProductAttributesFormSet')
+    ),
+    'oscar.apps.dashboard.promotions.forms': (
+        'oscar.apps.dashboard.promotions.formsets', ('OrderedProductFormSet',)
+    ),
+    'oscar.apps.wishlists.forms': (
+        'oscar.apps.wishlists.formsets', ('LineFormset',)
+    )
+}
 
 
 def get_class(module_label, classname, module_prefix='oscar.apps'):
@@ -45,7 +73,7 @@ def default_class_loader(module_label, classnames, module_prefix):
     """
     Dynamically import a list of classes from the given module.
 
-    This works by looking up a matching app from the app registry,
+    This works by looping over ``INSTALLED_APPS`` and looking for a match
     against the passed module label.  If the requested class can't be found in
     the matching module, then we attempt to import it from the corresponding
     core app.
@@ -101,17 +129,38 @@ def default_class_loader(module_label, classnames, module_prefix):
     # returns e.g. 'oscar.apps.dashboard.catalogue',
     # 'yourproject.apps.dashboard.catalogue' or 'dashboard.catalogue',
     # depending on what is set in INSTALLED_APPS
-    app_name = _find_registered_app_name(module_label)
-    if app_name.startswith('%s.' % module_prefix):
+    installed_apps_entry, app_name = _find_installed_apps_entry(module_label)
+    if installed_apps_entry.startswith('%s.' % module_prefix):
         # The entry is obviously an Oscar one, we don't import again
         local_module = None
     else:
         # Attempt to import the classes from the local module
         # e.g. 'yourproject.dashboard.catalogue.forms'
-        local_module_label = '.'.join(app_name.split('.') + module_label.split('.')[1:])
+        sub_module = module_label.replace(app_name, '', 1)
+        local_module_label = installed_apps_entry + sub_module
         local_module = _import_module(local_module_label, classnames)
 
-    if oscar_module is local_module is None:
+    # Checking whether module label has corresponding move module in the MOVED_ITEMS dictionary.
+    # If it does, checking if any of the loading classes moved to another module.
+    # Finally, it they did, importing move module and showing deprecation warning as well.
+    oscar_move_item = MOVED_ITEMS.get(oscar_module_label, None)
+    if oscar_move_item:
+        oscar_move_module_label = oscar_move_item[0]
+        oscar_move_classnames = oscar_move_item[1]
+        oscar_moved_classnames = list(set(oscar_move_classnames).intersection(classnames))
+        if oscar_moved_classnames:
+            warnings.warn(
+                'Classes %s has recently moved to the new destination module - %s, '
+                'please update your imports.' % (', '.join(oscar_moved_classnames),
+                                                 oscar_move_module_label),
+                DeprecationWarning, stacklevel=2)
+            oscar_move_module = _import_module(oscar_move_module_label, classnames)
+        else:
+            oscar_move_module = None
+    else:
+        oscar_move_module = None
+
+    if oscar_module is oscar_move_module is local_module is None:
         # This intentionally doesn't raise an ImportError, because ImportError
         # can get masked in complex circular import scenarios.
         raise ModuleNotFoundError(
@@ -121,7 +170,7 @@ def default_class_loader(module_label, classnames, module_prefix):
         )
 
     # return imported classes, giving preference to ones from the local package
-    return _pluck_classes([local_module, oscar_module], classnames)
+    return _pluck_classes([local_module, oscar_module, oscar_move_module], classnames)
 
 
 def _import_module(module_label, classnames):
@@ -171,23 +220,42 @@ def _pluck_classes(modules, classnames):
     return klasses
 
 
-def _find_registered_app_name(module_label):
+def _get_installed_apps_entry(app_name):
     """
-    Given a module label, finds the name of the matching Oscar app from the
-    Django app registry.
+    Given an app name (e.g. 'catalogue'), walk through INSTALLED_APPS
+    and return the first match, or None.
+    This does depend on the order of INSTALLED_APPS and will break if
+    e.g. 'dashboard.catalogue' comes before 'catalogue' in INSTALLED_APPS.
     """
-    from oscar.core.application import OscarConfig
+    for installed_app in settings.INSTALLED_APPS:
+        # match root-level apps ('catalogue') or apps with same name at end
+        # ('shop.catalogue'), but don't match 'fancy_catalogue'
+        if installed_app == app_name or installed_app.endswith('.' + app_name):
+            return installed_app
+    return None
 
-    app_label = module_label.split('.')[0]
-    try:
-        app_config = apps.get_app_config(app_label)
-    except LookupError:
-        raise AppNotFoundError(
-            "Couldn't find an app to import %s from" % module_label)
-    if not isinstance(app_config, OscarConfig):
-        raise AppNotFoundError(
-            "Couldn't find an Oscar app to import %s from" % module_label)
-    return app_config.name
+
+def _find_installed_apps_entry(module_label):
+    """
+    Given a module label, finds the best matching INSTALLED_APPS entry.
+
+    This is made trickier by the fact that we don't know what part of the
+    module_label is part of the INSTALLED_APPS entry. So we try all possible
+    combinations, trying the longer versions first. E.g. for
+    'dashboard.catalogue.forms', 'dashboard.catalogue' is attempted before
+    'dashboard'
+    """
+    modules = module_label.split('.')
+    # if module_label is 'dashboard.catalogue.forms.widgets', combinations
+    # will be ['dashboard.catalogue.forms', 'dashboard.catalogue', 'dashboard']
+    combinations = [
+        '.'.join(modules[:-count]) for count in range(1, len(modules))]
+    for app_name in combinations:
+        entry = _get_installed_apps_entry(app_name)
+        if entry:
+            return entry, app_name
+    raise AppNotFoundError(
+        "Couldn't find an app to import %s from" % module_label)
 
 
 def get_profile_class():
@@ -210,8 +278,8 @@ def feature_hidden(feature_name):
     """
     Test if a certain Oscar feature is disabled.
     """
-    return (feature_name is not None
-            and feature_name in settings.OSCAR_HIDDEN_FEATURES)
+    return (feature_name is not None and
+            feature_name in settings.OSCAR_HIDDEN_FEATURES)
 
 
 def get_model(app_label, model_name):
@@ -258,8 +326,3 @@ def is_model_registered(app_label, model_name):
         return False
     else:
         return True
-
-
-@lru_cache(maxsize=128)
-def cached_import_string(path):
-    return import_string(path)

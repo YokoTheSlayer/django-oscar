@@ -23,10 +23,10 @@ def create_range(range_class):
         raise exceptions.ValidationError(
             "A custom range must have a name attribute")
 
-    # Ensure range name is text (not gettext wrapper)
+    # Ensure range name is text (not ugettext wrapper)
     if range_class.name.__class__.__name__ == '__proxy__':
         raise exceptions.ValidationError(
-            "Custom ranges must have text names (not gettext proxies)")
+            "Custom ranges must have text names (not ugettext proxies)")
 
     try:
         return Range.objects.create(

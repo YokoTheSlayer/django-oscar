@@ -50,7 +50,7 @@ class DynamicImageNode(template.Node):
 
             for key, v in self.params.items():
                 value = v.resolve(context)
-                if key == 'format':
+                if key == u'format':
                     ext = value
                     ext_changed = True
                 else:

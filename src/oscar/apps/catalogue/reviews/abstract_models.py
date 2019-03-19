@@ -2,7 +2,8 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Count, Sum
 from django.urls import reverse
-from django.utils.translation import gettext_lazy as _
+from django.utils.encoding import python_2_unicode_compatible
+from django.utils.translation import ugettext_lazy as _
 from django.utils.translation import pgettext_lazy
 
 from oscar.apps.catalogue.reviews.utils import get_default_review_status
@@ -14,6 +15,7 @@ from oscar.core.loading import get_class
 ProductReviewQuerySet = get_class('catalogue.reviews.managers', 'ProductReviewQuerySet')
 
 
+@python_2_unicode_compatible
 class AbstractProductReview(models.Model):
     """
     A review of a product
@@ -30,7 +32,7 @@ class AbstractProductReview(models.Model):
     score = models.SmallIntegerField(_("Score"), choices=SCORE_CHOICES)
 
     title = models.CharField(
-        verbose_name=pgettext_lazy("Product review title", "Title"),
+        verbose_name=pgettext_lazy(u"Product review title", u"Title"),
         max_length=255, validators=[validators.non_whitespace])
 
     body = models.TextField(_("Body"))
@@ -45,7 +47,7 @@ class AbstractProductReview(models.Model):
 
     # Fields to be completed if user is anonymous
     name = models.CharField(
-        pgettext_lazy("Anonymous reviewer name", "Name"),
+        pgettext_lazy(u"Anonymous reviewer name", u"Name"),
         max_length=255, blank=True)
     email = models.EmailField(_("Email"), blank=True)
     homepage = models.URLField(_("URL"), blank=True)
@@ -104,11 +106,11 @@ class AbstractProductReview(models.Model):
         self.votes.create(user=user, delta=AbstractVote.DOWN)
 
     def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
+        super(AbstractProductReview, self).save(*args, **kwargs)
         self.product.update_rating()
 
     def delete(self, *args, **kwargs):
-        super().delete(*args, **kwargs)
+        super(AbstractProductReview, self).delete(*args, **kwargs)
         if self.product is not None:
             self.product.update_rating()
 
@@ -170,15 +172,16 @@ class AbstractProductReview(models.Model):
         review
         """
         if not user.is_authenticated:
-            return False, _("Only signed in users can vote")
+            return False, _(u"Only signed in users can vote")
         vote = self.votes.model(review=self, user=user, delta=1)
         try:
             vote.full_clean()
         except ValidationError as e:
-            return False, "%s" % e
+            return False, u"%s" % e
         return True, ""
 
 
+@python_2_unicode_compatible
 class AbstractVote(models.Model):
     """
     Records user ratings as yes/no vote.
@@ -211,7 +214,7 @@ class AbstractVote(models.Model):
         verbose_name_plural = _('Votes')
 
     def __str__(self):
-        return "%s vote for %s" % (self.delta, self.review)
+        return u"%s vote for %s" % (self.delta, self.review)
 
     def clean(self):
         if not self.review.is_anonymous and self.review.user == self.user:
@@ -226,5 +229,5 @@ class AbstractVote(models.Model):
                 "You can only vote once on a review"))
 
     def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
+        super(AbstractVote, self).save(*args, **kwargs)
         self.review.update_totals()

@@ -21,6 +21,7 @@ PaymentEventQuantity = get_model('order', 'PaymentEventQuantity')
 UserAddress = get_model('address', 'UserAddress')
 Basket = get_model('basket', 'Basket')
 CommunicationEventType = get_model('customer', 'CommunicationEventType')
+UnableToPlaceOrder = get_class('order.exceptions', 'UnableToPlaceOrder')
 
 # Standard logger for checkout events
 logger = logging.getLogger('oscar.checkout')
@@ -269,17 +270,7 @@ class OrderPlacementMixin(CheckoutSessionMixin):
         return reverse('checkout:thank-you')
 
     def send_confirmation_message(self, order, code, **kwargs):
-        try:
-            ctx = self.get_message_context(order, code)
-        except TypeError:
-            # It seems like the get_message_context method was overridden and
-            # it does not support the code argument yet
-            logger.warning(
-                'The signature of the get_message_context method has changed, '
-                'please update it in your codebase'
-            )
-            ctx = self.get_message_context(order)
-
+        ctx = self.get_message_context(order)
         try:
             event_type = CommunicationEventType.objects.get(code=code)
         except CommunicationEventType.DoesNotExist:
@@ -301,7 +292,7 @@ class OrderPlacementMixin(CheckoutSessionMixin):
             logger.warning("Order #%s - no %s communication event type",
                            order.number, code)
 
-    def get_message_context(self, order, code=None):
+    def get_message_context(self, order):
         ctx = {
             'user': self.request.user,
             'order': order,
@@ -309,21 +300,19 @@ class OrderPlacementMixin(CheckoutSessionMixin):
             'lines': order.lines.all()
         }
 
-        # Attempt to add the order status URL to the email template ctx.
-        try:
-            if self.request.user.is_authenticated:
-                path = reverse('customer:order',
-                               kwargs={'order_number': order.number})
-            else:
+        if not self.request.user.is_authenticated:
+            # Attempt to add the anon order status URL to the email template
+            # ctx.
+            try:
                 path = reverse('customer:anon-order',
                                kwargs={'order_number': order.number,
                                        'hash': order.verification_hash()})
-        except NoReverseMatch:
-            # We don't care that much if we can't resolve the URL
-            pass
-        else:
-            site = Site.objects.get_current()
-            ctx['status_url'] = 'http://%s%s' % (site.domain, path)
+            except NoReverseMatch:
+                # We don't care that much if we can't resolve the URL
+                pass
+            else:
+                site = Site.objects.get_current()
+                ctx['status_url'] = 'http://%s%s' % (site.domain, path)
         return ctx
 
     # Basket helpers
