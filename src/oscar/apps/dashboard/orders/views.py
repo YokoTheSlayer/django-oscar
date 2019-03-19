@@ -16,7 +16,6 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.utils.translation import ugettext_lazy as _
 from django.views.generic import DetailView, FormView, ListView, UpdateView
-
 from oscar.apps.order import exceptions as order_exceptions
 from oscar.apps.customer.utils import Dispatcher
 from oscar.apps.payment.exceptions import PaymentError
@@ -409,13 +408,15 @@ class OrderListView(BulkEditMixin, ListView):
                                  from_email=from_email,
                                  to=[order.email])
             email.send()
-            response = requests.post(
-                'https://w.red-pay.ru/partner/3/acquiring',
-                data=self.create_params(order))
-            dec_response = gzip.decompress(response.content)
-            new_response = dec_response.decode('utf-8')
-            dict_response = self.response_to_dict(new_response)
             if new_status == 'Fullfiled':
+                #response = requests.post(
+                #    'https://w.red-pay.ru/partner/3/acquiring',
+                #    data=self.create_params(order))
+                response = b'RESULT=0&PAY_ID=1073712773&STATUS=0&SIG=2749a57beaa00dbf513c67ace307da37&PAY_LINK=https%3A%2F%2Fcps.mobi-money.ru%2Fpay%2Fstart%2F6fb9745dd6f7a991537309cc20739135%2F83DD4569%2F&SDCODE=-1'
+                #dec_response = gzip.decompress(response.content) - магия программирования
+                new_response = response.decode('utf-8')#response.content.decode('utf-8')
+                dict_response = self.response_to_dict(new_response)
+                print(dict_response)
                 email = EmailMessage('Ссылка для оплаты заказа',
                                      'Ссыка для оплаты заказа {}'.format(dict_response['PAY_LINK']),
                                      from_email=from_email,
@@ -483,6 +484,7 @@ class OrderListView(BulkEditMixin, ListView):
                 order.notes.create(
                     user=request.user, message=msg, note_type=OrderNote.SYSTEM)
         return new_status
+
 class OrderDetailView(DetailView):
     """
     Dashboard view to display a single order.
