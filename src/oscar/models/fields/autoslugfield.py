@@ -27,6 +27,7 @@ THE SOFTWARE.
 import re
 
 from django.conf import settings
+from django.utils import six
 
 from oscar.core.utils import slugify
 
@@ -69,7 +70,7 @@ class AutoSlugField(SlugField):
         else:
             self._populate_from = populate_from
             self._populate_from_org = populate_from
-        self.separator = kwargs.pop('separator', '-')
+        self.separator = kwargs.pop('separator', six.u('-'))
         self.overwrite = kwargs.pop('overwrite', False)
         self.uppercase = kwargs.pop('uppercase', False)
         self.allow_duplicates = kwargs.pop('allow_duplicates', False)
@@ -79,7 +80,7 @@ class AutoSlugField(SlugField):
         if settings.OSCAR_SLUG_ALLOW_UNICODE:
             kwargs.setdefault('allow_unicode', settings.OSCAR_SLUG_ALLOW_UNICODE)
 
-        super().__init__(*args, **kwargs)
+        super(AutoSlugField, self).__init__(*args, **kwargs)
 
     def _slug_strip(self, value):
         """
@@ -177,9 +178,9 @@ class AutoSlugField(SlugField):
         return "SlugField"
 
     def deconstruct(self):
-        name, path, args, kwargs = super().deconstruct()
+        name, path, args, kwargs = super(AutoSlugField, self).deconstruct()
         kwargs['populate_from'] = self._populate_from_org
-        if not self.separator == '-':
+        if not self.separator == six.u('-'):
             kwargs['separator'] = self.separator
         if self.overwrite is not False:
             kwargs['overwrite'] = True

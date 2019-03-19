@@ -1,8 +1,12 @@
 import datetime
+import hashlib
+import gzip
+from os import environ
+import requests
 from collections import OrderedDict
 from decimal import Decimal as D
 from decimal import InvalidOperation
-
+from django.core.mail import EmailMessage
 from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ObjectDoesNotExist
@@ -10,10 +14,11 @@ from django.db.models import Count, Q, Sum, fields
 from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ugettext_lazy as _
 from django.views.generic import DetailView, FormView, ListView, UpdateView
 
 from oscar.apps.order import exceptions as order_exceptions
+from oscar.apps.customer.utils import Dispatcher
 from oscar.apps.payment.exceptions import PaymentError
 from oscar.core.compat import UnicodeCSVWriter
 from oscar.core.loading import get_class, get_model
@@ -50,7 +55,7 @@ def queryset_orders_for_user(user):
         'billing_address', 'billing_address__country',
         'shipping_address', 'shipping_address__country',
         'user'
-    ).prefetch_related('lines', 'status_changes')
+    ).prefetch_related('lines')
     if user.is_staff:
         return queryset
     else:
@@ -82,12 +87,12 @@ class OrderStatsView(FormView):
         return self.render_to_response(ctx)
 
     def get_form_kwargs(self):
-        kwargs = super().get_form_kwargs()
+        kwargs = super(OrderStatsView, self).get_form_kwargs()
         kwargs['data'] = self.request.GET
         return kwargs
 
     def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+        ctx = super(OrderStatsView, self).get_context_data(**kwargs)
         filters = kwargs.get('filters', {})
         ctx.update(self.get_stats(filters))
         ctx['title'] = kwargs['form'].get_filter_description()
@@ -122,7 +127,7 @@ class OrderListView(BulkEditMixin, ListView):
         # base_queryset is equal to all orders the user is allowed to access
         self.base_queryset = queryset_orders_for_user(
             request.user).order_by('-date_placed')
-        return super().dispatch(request, *args, **kwargs)
+        return super(OrderListView, self).dispatch(request, *args, **kwargs)
 
     def get(self, request, *args, **kwargs):
         if 'order_number' in request.GET and request.GET.get(
@@ -136,7 +141,7 @@ class OrderListView(BulkEditMixin, ListView):
             else:
                 return redirect(
                     'dashboard:order-detail', number=order.number)
-        return super().get(request, *args, **kwargs)
+        return super(OrderListView, self).get(request, *args, **kwargs)
 
     def get_queryset(self):  # noqa (too complex (19))
         """
@@ -333,7 +338,7 @@ class OrderListView(BulkEditMixin, ListView):
         return descriptions
 
     def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+        ctx = super(OrderListView, self).get_context_data(**kwargs)
         ctx['form'] = self.form
         ctx['order_statuses'] = Order.all_statuses()
         ctx['search_filters'] = self.get_search_filter_descriptions()
@@ -350,7 +355,7 @@ class OrderListView(BulkEditMixin, ListView):
             return self.download_selected_orders(
                 self.request,
                 context['object_list'])
-        return super().render_to_response(
+        return super(OrderListView, self).render_to_response(
             context, **response_kwargs)
 
     def get_download_filename(self, request):
@@ -395,10 +400,62 @@ class OrderListView(BulkEditMixin, ListView):
             writer.writerow(row.values())
         return response
 
-    def change_order_statuses(self, request, orders):
+    def change_order_statuses(self, request, orders):  ########### вставляем отправку email и запрос к API
+        from_email = settings.OSCAR_FROM_EMAIL
         for order in orders:
-            self.change_order_status(request, order)
+            new_status = self.change_order_status(request, order)
+            email = EmailMessage('Изменение статуса заказа',
+                                 'Статус вашего заказа был изменен на {}'.format(new_status),
+                                 from_email=from_email,
+                                 to=[order.email])
+            email.send()
+            response = requests.post(
+                'https://w.red-pay.ru/partner/3/acquiring',
+                data=self.create_params(order))
+            dec_response = gzip.decompress(response.content)
+            new_response = dec_response.decode('utf-8')
+            dict_response = self.response_to_dict(new_response)
+            if new_status == 'Fullfiled':
+                email = EmailMessage('Ссылка для оплаты заказа',
+                                     'Ссыка для оплаты заказа {}'.format(dict_response['PAY_LINK']),
+                                     from_email=from_email,
+                                     to=[order.email])
+                email.send()
         return redirect('dashboard:order-list')
+
+    def response_to_dict(self, data):
+        splitted_list = data.split('&')
+        new_splitted_list = []
+        for item in splitted_list:
+            new_splitted_list.append(item.split('='))
+        new_splitted_dict = dict(new_splitted_list)
+        print(new_splitted_dict)
+        if new_splitted_dict['RESULT'] == '0':
+            new_splitted_dict['PAY_LINK'] = new_splitted_dict['PAY_LINK'].replace('%2F', '/')
+            new_splitted_dict['PAY_LINK'] = new_splitted_dict['PAY_LINK'].replace('%3A', ':')
+        return new_splitted_dict
+
+    def create_params(self, data):
+        price = data.basket_total_before_discounts_excl_tax*100
+        now = datetime.datetime.now()
+        hashed_data = hashlib.md5(
+            str.encode(
+                environ['ID_TERMINAL'] +
+                environ['LOGIN'] +
+                environ['PASSWORD']))
+        params = {
+            'OPERATION': 'CreatePayment'.encode('utf-8'),
+            'TERMINAL_ID': str(126).encode('utf-8'),
+            'ARTICLE_ID': str(22345).encode('utf-8'),
+            'MPAY_ID': str(data.number).encode('utf-8'),
+            'MDATETIME': now.isoformat().encode('utf-8'),
+            'AMOUNT': str(price).encode('utf-8'),
+            'PTYPE': '1'.encode('utf-8'),
+            'CURRENCY': 'RUR'.encode('utf-8'),
+            'RETURN_URL': 'http://google.com'.encode('utf-8'),
+            'FAIL_URL': 'http://yandex.ru'.encode('utf-8'),
+            'IDENTITY': hashed_data.hexdigest().encode('utf-8')}
+        return params
 
     def change_order_status(self, request, order):
         # This method is pretty similar to what
@@ -425,8 +482,7 @@ class OrderListView(BulkEditMixin, ListView):
                 messages.info(request, msg)
                 order.notes.create(
                     user=request.user, message=msg, note_type=OrderNote.SYSTEM)
-
-
+        return new_status
 class OrderDetailView(DetailView):
     """
     Dashboard view to display a single order.
@@ -523,7 +579,7 @@ class OrderDetailView(DetailView):
         return HttpResponseRedirect(url)
 
     def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+        ctx = super(OrderDetailView, self).get_context_data(**kwargs)
         ctx['active_tab'] = kwargs.get('active_tab', 'lines')
 
         # Forms
@@ -748,7 +804,7 @@ class LineDetailView(DetailView):
             raise Http404()
 
     def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+        ctx = super(LineDetailView, self).get_context_data(**kwargs)
         ctx['order'] = self.object.order
         return ctx
 
@@ -803,13 +859,13 @@ class ShippingAddressUpdateView(UpdateView):
         return get_object_or_404(self.model, order=order)
 
     def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
+        ctx = super(ShippingAddressUpdateView, self).get_context_data(**kwargs)
         ctx['order'] = self.object.order
         return ctx
 
     def form_valid(self, form):
         old_address = ShippingAddress.objects.get(id=self.object.id)
-        response = super().form_valid(form)
+        response = super(ShippingAddressUpdateView, self).form_valid(form)
         changes = get_change_summary(old_address, self.object)
         if changes:
             msg = _("Delivery address updated:\n%s") % changes

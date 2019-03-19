@@ -10,8 +10,9 @@ from django.db import models
 from django.db.models import Sum
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare
+from django.utils.encoding import python_2_unicode_compatible
 from django.utils.timezone import now
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ugettext_lazy as _
 from django.utils.translation import pgettext_lazy
 
 from oscar.apps.order.signals import (
@@ -27,6 +28,7 @@ from . import exceptions
 logger = logging.getLogger('oscar.order')
 
 
+@python_2_unicode_compatible
 class AbstractOrder(models.Model):
     """
     The main order model
@@ -149,13 +151,7 @@ class AbstractOrder(models.Model):
                                   new_status=new_status,
                                   )
 
-        self._create_order_status_change(old_status, new_status)
-
     set_status.alters_data = True
-
-    def _create_order_status_change(self, old_status, new_status):
-        # Not setting the status on the order as that should be handled before
-        self.status_changes.create(old_status=old_status, new_status=new_status)
 
     @property
     def is_anonymous(self):
@@ -200,13 +196,13 @@ class AbstractOrder(models.Model):
 
     @property
     def total_before_discounts_incl_tax(self):
-        return (self.basket_total_before_discounts_incl_tax
-                + self.shipping_incl_tax)
+        return (self.basket_total_before_discounts_incl_tax +
+                self.shipping_incl_tax)
 
     @property
     def total_before_discounts_excl_tax(self):
-        return (self.basket_total_before_discounts_excl_tax
-                + self.shipping_excl_tax)
+        return (self.basket_total_before_discounts_excl_tax +
+                self.shipping_excl_tax)
 
     @property
     def total_discount_incl_tax(self):
@@ -307,7 +303,7 @@ class AbstractOrder(models.Model):
         verbose_name_plural = _("Orders")
 
     def __str__(self):
-        return "#%s" % (self.number,)
+        return u"#%s" % (self.number,)
 
     def verification_hash(self):
         signer = Signer(salt='oscar.apps.order.Order')
@@ -385,9 +381,10 @@ class AbstractOrder(models.Model):
         # this gives us the ability to set the date_placed explicitly (which is
         # useful when importing orders from another system).
         self.set_date_placed_default()
-        super().save(*args, **kwargs)
+        super(AbstractOrder, self).save(*args, **kwargs)
 
 
+@python_2_unicode_compatible
 class AbstractOrderNote(models.Model):
     """
     A note against an order.
@@ -427,7 +424,7 @@ class AbstractOrderNote(models.Model):
         verbose_name_plural = _("Order Notes")
 
     def __str__(self):
-        return "'%s' (%s)" % (self.message[0:50], self.user)
+        return u"'%s' (%s)" % (self.message[0:50], self.user)
 
     def is_editable(self):
         if self.note_type == self.SYSTEM:
@@ -436,30 +433,7 @@ class AbstractOrderNote(models.Model):
         return delta.seconds < self.editable_lifetime
 
 
-class AbstractOrderStatusChange(models.Model):
-    order = models.ForeignKey(
-        'order.Order',
-        on_delete=models.CASCADE,
-        related_name='status_changes',
-        verbose_name=_('Order Status Changes')
-    )
-    old_status = models.CharField(_('Old Status'), max_length=100, blank=True)
-    new_status = models.CharField(_('New Status'), max_length=100, blank=True)
-    date_created = models.DateTimeField(_('Date Created'), auto_now_add=True, db_index=True)
-
-    class Meta:
-        abstract = True
-        app_label = 'order'
-        verbose_name = _('Order Status Change')
-        verbose_name_plural = _('Order Status Changes')
-        ordering = ['-date_created']
-
-    def __str__(self):
-        return _('{order} has changed status from {old_status} to {new_status}').format(
-            order=self.order, old_status=self.old_status, new_status=self.new_status
-        )
-
-
+@python_2_unicode_compatible
 class AbstractCommunicationEvent(models.Model):
     """
     An order-level event involving a communication to the customer, such
@@ -474,7 +448,7 @@ class AbstractCommunicationEvent(models.Model):
         'customer.CommunicationEventType',
         on_delete=models.CASCADE,
         verbose_name=_("Event Type"))
-    date_created = models.DateTimeField(_("Date"), auto_now_add=True, db_index=True)
+    date_created = models.DateTimeField(_("Date"), auto_now_add=True)
 
     class Meta:
         abstract = True
@@ -491,6 +465,7 @@ class AbstractCommunicationEvent(models.Model):
 # LINES
 
 
+@python_2_unicode_compatible
 class AbstractLine(models.Model):
     """
     An order line
@@ -539,7 +514,7 @@ class AbstractLine(models.Model):
         'catalogue.Product', on_delete=models.SET_NULL, blank=True, null=True,
         verbose_name=_("Product"))
     title = models.CharField(
-        pgettext_lazy("Product title", "Title"), max_length=255)
+        pgettext_lazy(u"Product title", u"Title"), max_length=255)
     # UPC can be null because it's usually set as the product's UPC, and that
     # can be null as well
     upc = models.CharField(_("UPC"), max_length=128, blank=True, null=True)
@@ -825,6 +800,7 @@ class AbstractLine(models.Model):
         return True, None
 
 
+@python_2_unicode_compatible
 class AbstractLineAttribute(models.Model):
     """
     An attribute of a line
@@ -850,6 +826,7 @@ class AbstractLineAttribute(models.Model):
         return "%s = %s" % (self.type, self.value)
 
 
+@python_2_unicode_compatible
 class AbstractLinePrice(models.Model):
     """
     For tracking the prices paid for each unit within a line.
@@ -895,6 +872,7 @@ class AbstractLinePrice(models.Model):
 # PAYMENT EVENTS
 
 
+@python_2_unicode_compatible
 class AbstractPaymentEventType(models.Model):
     """
     Payment event types are things like 'Paid', 'Failed', 'Refunded'.
@@ -916,6 +894,7 @@ class AbstractPaymentEventType(models.Model):
         return self.name
 
 
+@python_2_unicode_compatible
 class AbstractPaymentEvent(models.Model):
     """
     A payment event for an order
@@ -951,7 +930,7 @@ class AbstractPaymentEvent(models.Model):
         null=True,
         on_delete=models.CASCADE,
         related_name='payment_events')
-    date_created = models.DateTimeField(_("Date created"), auto_now_add=True, db_index=True)
+    date_created = models.DateTimeField(_("Date created"), auto_now_add=True)
 
     class Meta:
         abstract = True
@@ -993,6 +972,7 @@ class PaymentEventQuantity(models.Model):
 # SHIPPING EVENTS
 
 
+@python_2_unicode_compatible
 class AbstractShippingEvent(models.Model):
     """
     An event is something which happens to a group of lines such as
@@ -1014,7 +994,7 @@ class AbstractShippingEvent(models.Model):
         _("Event notes"), blank=True,
         help_text=_("This could be the dispatch reference, or a "
                     "tracking number"))
-    date_created = models.DateTimeField(_("Date Created"), auto_now_add=True, db_index=True)
+    date_created = models.DateTimeField(_("Date Created"), auto_now_add=True)
 
     class Meta:
         abstract = True
@@ -1032,6 +1012,7 @@ class AbstractShippingEvent(models.Model):
         return self.lines.count()
 
 
+@python_2_unicode_compatible
 class ShippingEventQuantity(models.Model):
     """
     A "through" model linking lines to shipping events.
@@ -1065,7 +1046,7 @@ class ShippingEventQuantity(models.Model):
         if not self.line.is_shipping_event_permitted(
                 self.event.event_type, self.quantity):
             raise exceptions.InvalidShippingEvent
-        super().save(*args, **kwargs)
+        super(ShippingEventQuantity, self).save(*args, **kwargs)
 
     def __str__(self):
         return _("%(product)s - quantity %(qty)d") % {
@@ -1073,6 +1054,7 @@ class ShippingEventQuantity(models.Model):
             'qty': self.quantity}
 
 
+@python_2_unicode_compatible
 class AbstractShippingEventType(models.Model):
     """
     A type of shipping/fulfillment event
@@ -1099,6 +1081,7 @@ class AbstractShippingEventType(models.Model):
 # DISCOUNTS
 
 
+@python_2_unicode_compatible
 class AbstractOrderDiscount(models.Model):
     """
     A discount against an order.
@@ -1173,7 +1156,7 @@ class AbstractOrderDiscount(models.Model):
             if voucher:
                 self.voucher_code = voucher.code
 
-        super().save(**kwargs)
+        super(AbstractOrderDiscount, self).save(**kwargs)
 
     def __str__(self):
         return _("Discount of %(amount)r from order %(order)s") % {
@@ -1198,4 +1181,4 @@ class AbstractOrderDiscount(models.Model):
     def description(self):
         if self.voucher_code:
             return self.voucher_code
-        return self.offer_name or ""
+        return self.offer_name or u""

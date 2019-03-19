@@ -9,4 +9,4 @@ class SlugField(DjangoSlugField):
         if settings.OSCAR_SLUG_ALLOW_UNICODE:
             kwargs.setdefault('allow_unicode', settings.OSCAR_SLUG_ALLOW_UNICODE)
 
-        super().__init__(*args, **kwargs)
+        super(SlugField, self).__init__(*args, **kwargs)

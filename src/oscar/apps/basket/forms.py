@@ -1,7 +1,7 @@
 from django import forms
 from django.conf import settings
 from django.db.models import Sum
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ugettext_lazy as _
 
 from oscar.core.loading import get_model
 from oscar.forms import widgets
@@ -16,7 +16,7 @@ class BasketLineForm(forms.ModelForm):
         initial=False, required=False, label=_('Save for Later'))
 
     def __init__(self, strategy, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(BasketLineForm, self).__init__(*args, **kwargs)
         self.instance.strategy = strategy
 
         max_allowed_quantity = None
@@ -70,10 +70,10 @@ class SavedLineForm(forms.ModelForm):
     def __init__(self, strategy, basket, *args, **kwargs):
         self.strategy = strategy
         self.basket = basket
-        super().__init__(*args, **kwargs)
+        super(SavedLineForm, self).__init__(*args, **kwargs)
 
     def clean(self):
-        cleaned_data = super().clean()
+        cleaned_data = super(SavedLineForm, self).clean()
         if not cleaned_data['move_to_basket']:
             # skip further validation (see issue #666)
             return cleaned_data
@@ -96,7 +96,7 @@ class BasketVoucherForm(forms.Form):
     code = forms.CharField(max_length=128, label=_('Code'))
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(BasketVoucherForm, self).__init__(*args, **kwargs)
 
     def clean_code(self):
         return self.cleaned_data['code'].strip().upper()
@@ -113,7 +113,7 @@ class AddToBasketForm(forms.Form):
         self.basket = basket
         self.parent_product = product
 
-        super().__init__(*args, **kwargs)
+        super(AddToBasketForm, self).__init__(*args, **kwargs)
 
         # Dynamically build fields
         if product.is_parent:
@@ -219,8 +219,8 @@ class AddToBasketForm(forms.Form):
                   "price could not be determined for it."))
 
         # Check currencies are sensible
-        if (self.basket.currency
-                and info.price.currency != self.basket.currency):
+        if (self.basket.currency and
+                info.price.currency != self.basket.currency):
             raise forms.ValidationError(
                 _("This product cannot be added to the basket as its currency "
                   "isn't the same as other products in your basket"))
@@ -261,7 +261,7 @@ class SimpleAddToBasketForm(AddToBasketForm):
     """
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(SimpleAddToBasketForm, self).__init__(*args, **kwargs)
         if 'quantity' in self.fields:
             self.fields['quantity'].initial = 1
             self.fields['quantity'].widget = forms.HiddenInput()

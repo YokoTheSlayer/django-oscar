@@ -1,9 +1,10 @@
 from django.db import models, router
 from django.db.models import F, Value, signals
 from django.db.models.functions import Coalesce
+from django.utils.encoding import python_2_unicode_compatible
 from django.utils.functional import cached_property
 from django.utils.timezone import now
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import ugettext_lazy as _
 from django.utils.translation import pgettext_lazy
 
 from oscar.apps.partner.exceptions import InvalidStockAdjustment
@@ -12,6 +13,7 @@ from oscar.core.utils import get_default_currency
 from oscar.models.fields import AutoSlugField
 
 
+@python_2_unicode_compatible
 class AbstractPartner(models.Model):
     """
     A fulfillment partner. An individual or company who can fulfil products.
@@ -21,10 +23,10 @@ class AbstractPartner(models.Model):
     setting up an Oscar deployment. Many Oscar deployments will only have one
     fulfillment partner.
     """
-    code = AutoSlugField(_("Code"), max_length=128, unique=True, db_index=True,
+    code = AutoSlugField(_("Code"), max_length=128, unique=True,
                          populate_from='name')
     name = models.CharField(
-        pgettext_lazy("Partner's name", "Name"), max_length=128, blank=True, db_index=True)
+        pgettext_lazy(u"Partner's name", u"Name"), max_length=128, blank=True)
 
     #: A partner can have users assigned to it. This is used
     #: for access modelling in the permission-based dashboard
@@ -78,6 +80,7 @@ class AbstractPartner(models.Model):
         return self.display_name
 
 
+@python_2_unicode_compatible
 class AbstractStockRecord(models.Model):
     """
     A stock record.
@@ -150,10 +153,10 @@ class AbstractStockRecord(models.Model):
                                         db_index=True)
 
     def __str__(self):
-        msg = "Partner: %s, product: %s" % (
+        msg = u"Partner: %s, product: %s" % (
             self.partner.display_name, self.product,)
         if self.partner_sku:
-            msg = "%s (%s)" % (msg, self.partner_sku)
+            msg = u"%s (%s)" % (msg, self.partner_sku)
         return msg
 
     class Meta:
@@ -264,6 +267,7 @@ class AbstractStockRecord(models.Model):
         return self.net_stock_level < self.low_stock_threshold
 
 
+@python_2_unicode_compatible
 class AbstractStockAlert(models.Model):
     """
     A stock alert. E.g. used to notify users when a product is 'back in stock'.
@@ -281,7 +285,7 @@ class AbstractStockAlert(models.Model):
     )
     status = models.CharField(_("Status"), max_length=128, default=OPEN,
                               choices=status_choices)
-    date_created = models.DateTimeField(_("Date Created"), auto_now_add=True, db_index=True)
+    date_created = models.DateTimeField(_("Date Created"), auto_now_add=True)
     date_closed = models.DateTimeField(_("Date Closed"), blank=True, null=True)
 
     def close(self):

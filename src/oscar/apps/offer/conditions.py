@@ -1,7 +1,8 @@
 from decimal import Decimal as D
 from decimal import ROUND_UP
 
-from django.utils.translation import gettext_lazy as _
+from django.utils import six
+from django.utils.translation import ugettext_lazy as _
 from django.utils.translation import ungettext
 
 from oscar.core.loading import get_classes, get_model
@@ -26,7 +27,7 @@ class CountCondition(Condition):
     def name(self):
         return self._description % {
             'count': self.value,
-            'range': str(self.range).lower()}
+            'range': six.text_type(self.range).lower()}
 
     @property
     def description(self):
@@ -116,7 +117,7 @@ class CoverageCondition(Condition):
     def name(self):
         return self._description % {
             'count': self.value,
-            'range': str(self.range).lower()}
+            'range': six.text_type(self.range).lower()}
 
     @property
     def description(self):
@@ -220,7 +221,7 @@ class ValueCondition(Condition):
     def name(self):
         return self._description % {
             'amount': currency(self.value),
-            'range': str(self.range).lower()}
+            'range': six.text_type(self.range).lower()}
 
     @property
     def description(self):
@@ -240,8 +241,8 @@ class ValueCondition(Condition):
         """
         value_of_matches = D('0.00')
         for line in basket.all_lines():
-            if (self.can_apply_condition(line)
-                    and line.quantity_without_offer_discount(offer) > 0):
+            if (self.can_apply_condition(line) and
+                    line.quantity_without_offer_discount(offer) > 0):
                 price = unit_price(offer, line)
                 value_of_matches += price * int(
                     line.quantity_without_offer_discount(offer)
@@ -255,8 +256,8 @@ class ValueCondition(Condition):
             return getattr(self, '_value_of_matches')
         value_of_matches = D('0.00')
         for line in basket.all_lines():
-            if (self.can_apply_condition(line)
-                    and line.quantity_without_offer_discount(offer) > 0):
+            if (self.can_apply_condition(line) and
+                    line.quantity_without_offer_discount(offer) > 0):
                 price = unit_price(offer, line)
                 value_of_matches += price * int(
                     line.quantity_without_offer_discount(offer)

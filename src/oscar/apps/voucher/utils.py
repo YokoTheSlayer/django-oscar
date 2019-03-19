@@ -1,4 +1,4 @@
-from itertools import zip_longest
+from six.moves import zip_longest
 
 from django.db import connection
 from django.utils.crypto import get_random_string
